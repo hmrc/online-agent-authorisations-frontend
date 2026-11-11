@@ -138,6 +138,7 @@ package object models {
                 }
               }
           }
+        case _ => JsError(s"cannot remove $path from $jsValue")
       }
     }
   }

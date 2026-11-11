@@ -47,3 +47,21 @@ signedOut.guidance = We did not save your answers.
 
 unauthorised.title = You can’t access this service with this account
 unauthorised.heading = You can’t access this service with this account
+
+activateAgentEnrolment.title.single      = You need to activate your agent service
+activateAgentEnrolment.title.multiple    = You need to activate your agent services
+activateAgentEnrolment.heading.single    = You need to activate your agent service
+activateAgentEnrolment.heading.multiple  = You need to activate your agent services
+activateAgentEnrolment.p1.single         = You must activate ‘{0}’ before you can ask a client for authorisation.
+activateAgentEnrolment.p1.multiple       = You must activate at least one of these services before you can ask a client for authorisation:
+activateAgentEnrolment.p2.single         = HMRC will send your activation code in the post, usually within 7 to 10 days of enrolment. Once you’ve received your code, you can activate the service.
+activateAgentEnrolment.p2.multiple       = HMRC will send an activation code for each service in the post, usually within 7 to 10 days of enrolment. Once you’ve received your codes, you can activate the services.
+activateAgentEnrolment.p3                = The code is valid for 28 days. If you don’t use it within that period, you must <a href="{0}" class="govuk-link">{1}</a> and enrol again.
+activateAgentEnrolment.p3.linkText       = visit your business tax account
+
+agentEnrolment.IR-SA-AGENT      = Self Assessment for agents
+agentEnrolment.IR-CT-AGENT      = Corporation Tax for agents
+agentEnrolment.IR-PAYE-AGENT    = PAYE for agents (including CIS and ERS)
+agentEnrolment.HMCE-VAT-AGNT    = VAT for agents (including EU VAT refunds, NOVA and VAT MOSS)
+agentEnrolment.HMRC-NOVRN-AGNT  = NOVA for agents (including EU VAT refunds and VAT MOSS)
+agentEnrolment.HMRC-MGD-AGNT    = Machine Games Duty for agents
