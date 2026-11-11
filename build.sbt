@@ -7,11 +7,17 @@ lazy val appName: String = "online-agent-authorisations-frontend"
 
 ThisBuild / majorVersion := 0
 ThisBuild / scalaVersion := "3.3.5"
+ThisBuild / scalacOptions ++= Seq(
+  "-feature",
+  "-Wconf:msg=Flag.*repeatedly:silent",
+  "-Xfatal-warnings",
+  "-Wconf:src=target/.*:silent"
+)
 
 lazy val microservice = (project in file("."))
   .enablePlugins(PlayScala, SbtDistributablesPlugin)
-  .disablePlugins(JUnitXmlReportPlugin) //Required to prevent https://github.com/scalatest/scalatest/issues/1427
-  .settings(inConfig(Test)(testSettings): _*)
+  .disablePlugins(JUnitXmlReportPlugin)
+  .settings(inConfig(Test)(testSettings) *)
   .settings(ThisBuild / useSuperShell := false)
   .settings(
     name := appName,
@@ -31,23 +37,19 @@ lazy val microservice = (project in file("."))
       "controllers.routes._",
       "viewmodels.govuk.all._"
     ),
-    PlayKeys.playDefaultPort := 9000,
-    ScoverageKeys.coverageExcludedFiles := "<empty>;Reverse.*;.*handlers.*;.*components.*;" +
-      ".*Routes.*;.*viewmodels.govuk.*;",
-    ScoverageKeys.coverageMinimumStmtTotal := 78,
+    PlayKeys.playDefaultPort := 20110,
+    ScoverageKeys.coverageExcludedFiles := "<empty>,Reverse.*,.*handlers.*,.*components.*," +
+      ".*Routes.*,.*viewmodels.govuk.*,.*views.*",
+    ScoverageKeys.coverageMinimumStmtTotal := 85,
     ScoverageKeys.coverageFailOnMinimum := true,
     ScoverageKeys.coverageHighlighting := true,
-    scalacOptions ++= Seq(
-      "-feature",
-      "-Wconf:cat=deprecation:ws,cat=feature:ws,cat=optimizer:ws,src=target/.*:s"
-    ),
     libraryDependencies ++= AppDependencies(),
     retrieveManaged := true,
     pipelineStages := Seq(digest),
     Assets / pipelineStages := Seq(concat)
   )
 
-lazy val testSettings: Seq[Def.Setting[_]] = Seq(
+lazy val testSettings: Seq[Def.Setting[?]] = Seq(
   fork := true,
   unmanagedSourceDirectories += baseDirectory.value / "test-utils"
 )
