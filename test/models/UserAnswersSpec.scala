@@ -151,6 +151,36 @@ class UserAnswersSpec extends SpecBase {
       }
     }
 
+    "withoutJourneyData" - {
+
+      "must remove request, authorise, delete, submission and codeEntry and keep everything else" in {
+        val userAnswers = UserAnswers(
+          "id",
+          Json.obj(
+            "request"    -> Json.obj("service" -> "SA"),
+            "authorise"  -> Json.obj("selectedRequestIds" -> Json.arr(42)),
+            "delete"     -> Json.obj("selectedRequestIds" -> Json.arr(42)),
+            "submission" -> Json.obj("requestIds" -> Json.arr(42)),
+            "codeEntry"  -> Json.obj("requestId" -> 42, "result" -> "accepted"),
+            "other"      -> "keep"
+          ),
+          lastUpdated
+        )
+
+        val result = userAnswers.withoutJourneyData
+
+        result.data mustEqual Json.obj("other" -> "keep")
+        result.id mustEqual "id"
+        result.lastUpdated mustEqual lastUpdated
+      }
+
+      "must leave the data unchanged when there are no journey sections" in {
+        val userAnswers = UserAnswers("id", Json.obj("other" -> "keep"), lastUpdated)
+
+        userAnswers.withoutJourneyData mustEqual userAnswers
+      }
+    }
+
     "format" - {
 
       val userAnswers = UserAnswers("id", Json.obj("name" -> "Alice"), lastUpdated)

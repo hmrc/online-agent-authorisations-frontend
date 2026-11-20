@@ -26,11 +26,12 @@ import play.api.mvc.*
 import play.api.mvc.Results.*
 import uk.gov.hmrc.auth.core.*
 import uk.gov.hmrc.auth.core.retrieve.v2.Retrievals
-import uk.gov.hmrc.auth.core.retrieve.~
-import uk.gov.hmrc.http.{HeaderCarrier, UnauthorizedException}
+import uk.gov.hmrc.auth.core.retrieve.{AgentInformation, ~}
+import uk.gov.hmrc.http.HeaderCarrier
 import uk.gov.hmrc.play.http.HeaderCarrierConverter
 
 import scala.concurrent.{ExecutionContext, Future}
+import scala.util.control.NonFatal
 
 trait IdentifierAction extends ActionBuilder[IdentifierRequest, AnyContent] with ActionFunction[Request, IdentifierRequest]
 
@@ -41,49 +42,70 @@ class AuthenticatedIdentifierAction @Inject()(
                                              )(implicit val executionContext: ExecutionContext)
   extends IdentifierAction with AuthorisedFunctions with Logging {
 
+  // agentInformation carries both the agent code and the agent ID
   private val retrievals =
-    Retrievals.internalId and Retrievals.affinityGroup and Retrievals.agentCode and
-      Retrievals.credentials and Retrievals.email and Retrievals.allEnrolments
+    Retrievals.internalId and Retrievals.affinityGroup and Retrievals.agentInformation and
+      Retrievals.credentials and Retrievals.email and Retrievals.allEnrolments and Retrievals.credentialRole
+
+  private val unauthorised: Result = Redirect(routes.UnauthorisedController.onPageLoad())
 
   override def invokeBlock[A](request: Request[A], block: IdentifierRequest[A] => Future[Result]): Future[Result] = {
 
     implicit val hc: HeaderCarrier = HeaderCarrierConverter.fromRequestAndSession(request, request.session)
 
-    authorised().retrieve(retrievals) {
-      case None ~ _ ~ _ ~ _ ~ _ ~ _ =>
-        Future.failed(new UnauthorizedException("Unable to retrieve internal Id"))
-
-      case Some(internalId) ~ Some(AffinityGroup.Agent) ~ Some(agentCode) ~ Some(credentials) ~ email ~ enrolments
-        if agentCode.nonEmpty =>
-        val agentReferences = AgentEnrolment.agentReferences(enrolments)
-        if (agentReferences.isEmpty) {
-          if (AgentEnrolment.hasNotActivatedEnrolment(enrolments)) {
-            logger.info("[AuthenticatedIdentifierAction] Agent has OAA enrolments but none are activated")
-            //TODO check what the actual things the agents need to do to activate their enrolments
-            Future.successful(Redirect(routes.ActivateAgentEnrolmentController.onPageLoad()))
+    // Auth failures are handled here; anything the page itself throws (such as a backend error) is left to the error handler
+    val identified: Future[Either[Result, IdentifierRequest[A]]] =
+      authorised().retrieve(retrievals) {
+        case Some(internalId) ~ Some(AffinityGroup.Agent) ~ AgentInformation(agentId, Some(agentCode), _) ~ Some(credentials) ~
+          email ~ enrolments ~ credentialRole if agentCode.nonEmpty =>
+          val agentReferences = AgentEnrolment.agentReferences(enrolments)
+          if (agentReferences.isEmpty) {
+            if (AgentEnrolment.hasNotActivatedEnrolment(enrolments)) {
+              logger.info("[AuthenticatedIdentifierAction] Agent has OAA enrolments but none are activated")
+              //TODO check what the actual things the agents need to do to activate their enrolments
+              Future.successful(Left(Redirect(routes.ActivateAgentEnrolmentController.onPageLoad())))
+            } else {
+              logger.warn("[AuthenticatedIdentifierAction] Agent has no OAA enrolments")
+              Future.successful(Left(unauthorised))
+            }
           } else {
-            logger.warn("[AuthenticatedIdentifierAction] Agent has no OAA enrolments")
-            Future.successful(Redirect(routes.UnauthorisedController.onPageLoad()))
+            Future.successful(Right(IdentifierRequest(
+              request,
+              internalId,
+              AgentDetails(
+                agentCode       = agentCode,
+                agentId         = agentId,
+                credentialId    = credentials.providerId,
+                email           = email,
+                isAssistant     = credentialRole.contains(Assistant),
+                agentReferences = agentReferences
+              )
+            )))
           }
-        } else {
-          block(IdentifierRequest(
-            request,
-            internalId,
-            AgentDetails(agentCode, credentials.providerId, email, agentReferences)
-          ))
-        }
 
-      case _ ~ Some(AffinityGroup.Agent) ~ _ ~ _ ~ _ ~ _ =>
-        logger.warn("[AuthenticatedIdentifierAction] Agent has no agent code or credentials")
-        Future.successful(Redirect(routes.UnauthorisedController.onPageLoad()))
+        case None ~ _ ~ _ ~ _ ~ _ ~ _ ~ _ =>
+          logger.warn("[AuthenticatedIdentifierAction] Unable to retrieve internal Id")
+          Future.successful(Left(unauthorised))
 
-      case _ =>
-        Future.successful(Redirect(routes.UnauthorisedController.onPageLoad()))
-    } recover {
-      case _: NoActiveSession =>
-        Redirect(config.loginUrl, Map("continue" -> Seq(s"${config.host}${request.uri}")))
-      case _: AuthorisationException =>
-        Redirect(routes.UnauthorisedController.onPageLoad())
+        case _ ~ Some(AffinityGroup.Agent) ~ _ ~ _ ~ _ ~ _ ~ _ =>
+          logger.warn("[AuthenticatedIdentifierAction] Agent has no agent code or credentials")
+          Future.successful(Left(unauthorised))
+
+        case _ =>
+          Future.successful(Left(unauthorised))
+      } recover {
+        case _: NoActiveSession =>
+          Left(Redirect(config.loginUrl, Map("continue" -> Seq(s"${config.host}${request.uri}"))))
+        case _: AuthorisationException =>
+          Left(unauthorised)
+        case NonFatal(e) =>
+          logger.error(s"[AuthenticatedIdentifierAction] Auth failed: ${e.getMessage}")
+          Left(unauthorised)
+      }
+
+    identified.flatMap {
+      case Left(result)            => Future.successful(result)
+      case Right(identifiedRequest) => block(identifiedRequest)
     }
   }
 }

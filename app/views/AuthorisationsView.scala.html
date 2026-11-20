@@ -1,0 +1,88 @@
+@*
+ * Copyright 2026 HM Revenue & Customs
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *@
+
+@import config.FrontendAppConfig
+@import models.AgentListCounts
+@import models.requests.AgentDetails
+@import viewmodels.CardLink
+
+@this(
+        layout: templates.Layout,
+        card: components.Card,
+        gridRow: components.GridRow,
+        govukInsetText: GovukInsetText,
+        appConfig: FrontendAppConfig
+)
+
+@(counts: AgentListCounts, agent: AgentDetails)(implicit request: Request[_], messages: Messages)
+
+@* TODO: swap for reverse routes once AC2, AC6, AC13, YA2 and YA5 exist *@
+@oaaPage(path: String) = @{ s"${controllers.routes.AuthorisationsController.onPageLoad().url}/$path" }
+
+@adminLinks = @{
+    if (agent.isAssistant) Nil
+    else Seq(
+        CardLink("manage-team", messages("authorisations.account.manageTeam"), appConfig.manageTeamUrl),
+        CardLink("manage-team-access", messages("authorisations.account.manageTeamAccess"), appConfig.manageTeamAccessUrl),
+        CardLink("remove-services", messages("authorisations.account.removeServices"), appConfig.removeServicesUrl)
+    )
+}
+
+@layout(pageTitle = titleNoForm(messages("authorisations.title")), showBackLink = false, isFullWidth = true) {
+
+    <h1 class="govuk-heading-xl govuk-!-margin-bottom-4">@messages("authorisations.heading")</h1>
+
+    <p class="govuk-body-l govuk-!-margin-bottom-8" id="gg-identifier">@messages("authorisations.ggIdentifier", agent.governmentGatewayIdentifier)</p>
+
+    @gridRow(
+        card("manage-authorisations", messages("authorisations.manage.title"), Seq(
+            CardLink("request-authorisation", messages("authorisations.manage.request"), oaaPage("request-authorisation")),
+            CardLink("unsubmitted-requests", messages("authorisations.manage.unsubmitted", counts.unsubmitted), oaaPage("unsubmitted-requests")),
+            CardLink("pending-requests", messages("authorisations.manage.pending", counts.submitted), oaaPage("pending-requests"))
+        )),
+        card("your-account", messages("authorisations.account.title"), Seq(
+            CardLink("change-details", messages("authorisations.account.changeDetails"), oaaPage("your-account/change-details")),
+            CardLink("change-password", messages("authorisations.account.changePassword"), oaaPage("your-account/change-password"))
+        ) ++ adminLinks)
+    )
+
+    @gridRow(
+        card("help-and-information", messages("authorisations.help.title"), Seq(
+            CardLink("faqs", messages("authorisations.help.faqs"), appConfig.faqsUrl, newTab = true),
+            CardLink("vat-for-agents", messages("authorisations.help.vatForAgents"), appConfig.vatForAgentsUrl, newTab = true),
+            CardLink("give-feedback", messages("authorisations.help.feedback"), appConfig.feedbackUrl),
+            CardLink("legal-changes", messages("authorisations.help.legalChanges"), appConfig.legalChangesUrl, newTab = true)
+        )),
+        card("other-services", messages("authorisations.other.title"), Seq(
+            CardLink("your-hmrc-services", messages("authorisations.other.yourServices"), appConfig.yourHmrcServicesUrl),
+            CardLink("tools-and-calculators", messages("authorisations.other.tools"), appConfig.toolsAndCalculatorsUrl)
+        ))
+    )
+
+    <div class="govuk-grid-row govuk-!-margin-top-6">
+        <div class="govuk-grid-column-two-thirds">
+            @govukInsetText(InsetText(
+                id      = Some("mtd-inset"),
+                content = HtmlContent(
+                    messages(
+                        "authorisations.mtd.inset",
+                        s"""<a class="govuk-link" href="${appConfig.agentServicesAccountGuideUrl}" target="_blank" rel="noopener noreferrer">${messages("authorisations.mtd.link")} ${messages("site.opensInNewTab")}</a>"""
+                    )
+                )
+            ))
+        </div>
+    </div>
+}

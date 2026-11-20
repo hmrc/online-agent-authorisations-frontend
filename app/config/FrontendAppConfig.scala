@@ -37,8 +37,23 @@ class FrontendAppConfig @Inject() (configuration: Configuration) {
   val loginContinueUrl: String = configuration.get[String]("urls.loginContinue")
   val signOutUrl: String       = configuration.get[String]("urls.signOut")
 
+  private def authorisationsUrl(key: String): String = configuration.get[String](s"urls.authorisations.$key")
+
+  val manageTeamUrl: String                = authorisationsUrl("manageTeam")
+  val manageTeamAccessUrl: String          = authorisationsUrl("manageTeamAccess")
+  val removeServicesUrl: String            = authorisationsUrl("removeServices")
+  val faqsUrl: String                      = authorisationsUrl("faqs")
+  val vatForAgentsUrl: String              = authorisationsUrl("vatForAgents")
+  val legalChangesUrl: String              = authorisationsUrl("legalChanges")
+  val yourHmrcServicesUrl: String          = authorisationsUrl("yourHmrcServices")
+  val toolsAndCalculatorsUrl: String       = authorisationsUrl("toolsAndCalculators")
+  val agentServicesAccountGuideUrl: String = authorisationsUrl("agentServicesAccountGuide")
+
   private val exitSurveyBaseUrl: String = configuration.get[Service]("microservice.services.feedback-frontend").baseUrl
   val exitSurveyUrl: String             = s"$exitSurveyBaseUrl/feedback/online-agent-authorisations-frontend"
+
+  val onlineAgentAuthorisationsUrl: String =
+    configuration.get[Service]("microservice.services.online-agent-authorisations").baseUrl
 
   val languageTranslationEnabled: Boolean =
     configuration.get[Boolean]("features.welsh-translation")
