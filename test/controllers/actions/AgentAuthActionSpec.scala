@@ -25,8 +25,8 @@ import play.api.test.FakeRequest
 import play.api.test.Helpers.*
 import uk.gov.hmrc.auth.core.*
 import uk.gov.hmrc.auth.core.authorise.Predicate
-import uk.gov.hmrc.auth.core.retrieve.{Credentials, Retrieval, ~}
-import uk.gov.hmrc.http.{HeaderCarrier, UnauthorizedException}
+import uk.gov.hmrc.auth.core.retrieve.{AgentInformation, Credentials, Retrieval, ~}
+import uk.gov.hmrc.http.{HeaderCarrier, UpstreamErrorResponse}
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{ExecutionContext, Future}
@@ -34,12 +34,20 @@ import scala.concurrent.{ExecutionContext, Future}
 class AgentAuthActionSpec extends SpecBase {
 
   private type AuthRetrievals =
-    Option[String] ~ Option[AffinityGroup] ~ Option[String] ~ Option[Credentials] ~ Option[String] ~ Enrolments
+    Option[String] ~ Option[AffinityGroup] ~ AgentInformation ~ Option[Credentials] ~ Option[String] ~ Enrolments ~
+      Option[CredentialRole]
 
   class Harness(authAction: IdentifierAction) {
     def onPageLoad(): Action[AnyContent] = authAction { request =>
       val services = request.activatedServices.map(s => s"${s.code}=${request.agentReference(s).getOrElse("")}").mkString(",")
       Results.Ok(s"${request.agentCode}|${request.credentialId}|${request.email.getOrElse("")}|$services")
+    }
+  }
+
+  // Echoes the agent ID, GG identifier and assistant flag
+  class DetailsHarness(authAction: IdentifierAction) {
+    def onPageLoad(): Action[AnyContent] = authAction { request =>
+      Results.Ok(s"${request.agentId.getOrElse("")}|${request.governmentGatewayIdentifier}|${request.isAssistant}")
     }
   }
 
@@ -62,11 +70,19 @@ class AgentAuthActionSpec extends SpecBase {
                               internalId: Option[String]          = Some("internalId"),
                               affinityGroup: Option[AffinityGroup] = Some(AffinityGroup.Agent),
                               agentCode: Option[String]           = Some("AGENTCODE1"),
+                              agentId: Option[String]             = Some("12345678"),
                               credentials: Option[Credentials]    = Some(Credentials("cred-id", "GovernmentGateway")),
                               email: Option[String]               = Some("agent@example.com"),
-                              enrolments: Set[Enrolment]          = Set(saAgent)
+                              enrolments: Set[Enrolment]          = Set(saAgent),
+                              credentialRole: Option[CredentialRole] = Some(User)
                             ): AuthRetrievals =
-    new ~(new ~(new ~(new ~(new ~(internalId, affinityGroup), agentCode), credentials), email), Enrolments(enrolments))
+    new ~(
+      new ~(
+        new ~(new ~(new ~(new ~(internalId, affinityGroup), AgentInformation(agentId, agentCode, None)), credentials), email),
+        Enrolments(enrolments)
+      ),
+      credentialRole
+    )
 
   private def runAction(retrievals: AuthRetrievals, request: FakeRequest[AnyContent] = FakeRequest()) = {
     val application = applicationBuilder(userAnswers = None).build()
@@ -77,6 +93,18 @@ class AgentAuthActionSpec extends SpecBase {
 
       val authAction = new AuthenticatedIdentifierAction(new FakeAuthConnector(retrievals), appConfig, bodyParsers)
       new Harness(authAction).onPageLoad()(request)
+    }
+  }
+
+  private def runDetails(retrievals: AuthRetrievals) = {
+    val application = applicationBuilder(userAnswers = None).build()
+
+    running(application) {
+      val bodyParsers = application.injector.instanceOf[BodyParsers.Default]
+      val appConfig   = application.injector.instanceOf[FrontendAppConfig]
+
+      val authAction = new AuthenticatedIdentifierAction(new FakeAuthConnector(retrievals), appConfig, bodyParsers)
+      new DetailsHarness(authAction).onPageLoad()(FakeRequest())
     }
   }
 
@@ -133,6 +161,46 @@ class AgentAuthActionSpec extends SpecBase {
 
         status(result) mustBe OK
         contentAsString(result) must endWith("|SA=SA0001")
+      }
+
+      "must give the agent ID and a <agent ID>-<agent code> Government Gateway identifier" in {
+
+        val result = runDetails(authRetrievals())
+
+        status(result) mustBe OK
+        contentAsString(result) mustBe "12345678|12345678-AGENTCODE1|false"
+      }
+
+      "must use just the agent code as the Government Gateway identifier when there is no agent ID" in {
+
+        val result = runDetails(authRetrievals(agentId = None))
+
+        status(result) mustBe OK
+        contentAsString(result) mustBe "|AGENTCODE1|false"
+      }
+
+      "must mark an Assistant as an assistant" in {
+
+        val result = runDetails(authRetrievals(credentialRole = Some(Assistant)))
+
+        status(result) mustBe OK
+        contentAsString(result) must endWith("|true")
+      }
+
+      "must not mark a User (administrator) as an assistant" in {
+
+        val result = runDetails(authRetrievals(credentialRole = Some(User)))
+
+        status(result) mustBe OK
+        contentAsString(result) must endWith("|false")
+      }
+
+      "must not mark the agent as an assistant when auth returns no credential role" in {
+
+        val result = runDetails(authRetrievals(credentialRole = None))
+
+        status(result) mustBe OK
+        contentAsString(result) must endWith("|false")
       }
 
       "must allow access when the agent has no email address" in {
@@ -241,11 +309,61 @@ class AgentAuthActionSpec extends SpecBase {
 
     "when auth returns no internal id" - {
 
-      "must fail with an UnauthorizedException" in {
+      "must redirect to the unauthorised page" in {
 
         val result = runAction(authRetrievals(internalId = None))
 
-        result.failed.futureValue mustBe an[UnauthorizedException]
+        status(result) mustBe SEE_OTHER
+        redirectLocation(result).value mustBe routes.UnauthorisedController.onPageLoad().url
+      }
+    }
+
+    "when auth returns an error" - {
+
+      def runFailing(error: Throwable) = {
+        val application = applicationBuilder(userAnswers = None).build()
+
+        running(application) {
+          val bodyParsers = application.injector.instanceOf[BodyParsers.Default]
+          val appConfig   = application.injector.instanceOf[FrontendAppConfig]
+
+          val authAction = new AuthenticatedIdentifierAction(new FakeFailingAuthConnector(error), appConfig, bodyParsers)
+          new Harness(authAction).onPageLoad()(FakeRequest())
+        }
+      }
+
+      "must redirect to the unauthorised page for an authorisation exception" in {
+
+        val result = runFailing(new InsufficientEnrolments)
+
+        status(result) mustBe SEE_OTHER
+        redirectLocation(result).value mustBe routes.UnauthorisedController.onPageLoad().url
+      }
+
+      "must redirect to the unauthorised page when the auth service fails" in {
+
+        val result = runFailing(UpstreamErrorResponse("auth is down", INTERNAL_SERVER_ERROR))
+
+        status(result) mustBe SEE_OTHER
+        redirectLocation(result).value mustBe routes.UnauthorisedController.onPageLoad().url
+      }
+    }
+
+    "when the page fails after auth has passed" - {
+
+      "must not turn the error into an unauthorised redirect" in {
+
+        val application = applicationBuilder(userAnswers = None).build()
+
+        running(application) {
+          val bodyParsers = application.injector.instanceOf[BodyParsers.Default]
+          val appConfig   = application.injector.instanceOf[FrontendAppConfig]
+
+          val authAction = new AuthenticatedIdentifierAction(new FakeAuthConnector(authRetrievals()), appConfig, bodyParsers)
+          val failing    = authAction.async(_ => Future.failed(UpstreamErrorResponse("backend is down", INTERNAL_SERVER_ERROR)))
+
+          failing(FakeRequest()).failed.futureValue mustBe an[UpstreamErrorResponse]
+        }
       }
     }
 

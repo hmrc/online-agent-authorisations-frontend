@@ -63,9 +63,16 @@ final case class UserAnswers(
         page.cleanup(None, updatedAnswers)
     }
   }
+
+  /** Removes the journey sections so a new request starts clean, keeping any other data. */
+  def withoutJourneyData: UserAnswers =
+    copy(data = UserAnswers.journeySections.foldLeft(data)(_ - _))
 }
 
 object UserAnswers {
+
+  /** Sections of `data` that belong to a single journey and are cleared on the AC1 landing page. */
+  val journeySections: Seq[String] = Seq("request", "authorise", "delete", "submission", "codeEntry")
 
   val reads: Reads[UserAnswers] = {
 
