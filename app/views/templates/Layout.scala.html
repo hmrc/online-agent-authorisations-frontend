@@ -15,23 +15,27 @@
  *@
 
 @import config.FrontendAppConfig
-@import uk.gov.hmrc.hmrcfrontend.views.config.StandardAlphaBanner
+@import uk.gov.hmrc.hmrcfrontend.views.config.StandardBetaBanner
 @import uk.gov.hmrc.hmrcfrontend.views.html.helpers._
 @import uk.gov.hmrc.hmrcfrontend.views.html.components._
 @import uk.gov.hmrc.govukfrontend.views.html.components._
 @import uk.gov.hmrc.hmrcfrontend.views.viewmodels.hmrcstandardpage._
+@import views.html.helper.CSPNonce
 
 @this(
     appConfig: FrontendAppConfig,
     hmrcTimeoutDialog: HmrcTimeoutDialog,
     hmrcReportTechnicalIssueHelper: HmrcReportTechnicalIssueHelper,
-    alphaBanner: StandardAlphaBanner,
+    betaBanner: StandardBetaBanner,
     hmrcStandardPage: HmrcStandardPage
 )
 
-@(pageTitle: String, showBackLink: Boolean = true, timeout: Boolean = true, showSignOut: Boolean = true, showHmrcBanner: Boolean = false)(contentBlock: Html)(implicit rh: RequestHeader, messages: Messages)
+@(pageTitle: String, showBackLink: Boolean = true, timeout: Boolean = true, showSignOut: Boolean = true, showHmrcBanner: Boolean = false, isFullWidth: Boolean = false)(contentBlock: Html)(implicit rh: RequestHeader, messages: Messages)
 
 @head = {
+
+    <link href='@controllers.routes.Assets.versioned("stylesheets/application.css")' media="all" rel="stylesheet" type="text/css" @{CSPNonce.attr} />
+
 
     @if(timeout) {
         @hmrcTimeoutDialog(TimeoutDialog(
@@ -50,21 +54,38 @@
 
 @content = {
     @contentBlock
+    <div class="govuk-!-margin-top-8 govuk-body-s">
     @hmrcReportTechnicalIssueHelper()
+    </div>
 }
 
 @hmrcStandardPage(HmrcStandardPageParams(
     pageTitle = Some(pageTitle),
-    templateOverrides = TemplateOverrides(
-        additionalHeadBlock = Some(head)
-    ),
+    templateOverrides = if (isFullWidth)
+        TemplateOverrides(
+            additionalHeadBlock = Some(head),
+            mainContentLayout = Some({ (content: Html) =>
+                Html(
+                s"""
+                |<div class="govuk-grid-row">
+                    |  <div class="govuk-grid-column-full">
+                    |    ${content.body}
+                    |  </div>
+                    |</div>
+                |""".stripMargin
+                )
+            })
+        ) else
+        TemplateOverrides(
+            additionalHeadBlock = Some(head)
+        ),
     serviceURLs = ServiceURLs(
         serviceUrl = Some(routes.IndexController.onPageLoad().url),
         signOutUrl = if(showSignOut) Some(controllers.auth.routes.AuthController.signOut().url) else None
     ),
     banners = Banners(
         displayHmrcBanner = showHmrcBanner,
-        phaseBanner = Some(alphaBanner(appConfig.feedbackUrl))
+        phaseBanner = Some(betaBanner(appConfig.feedbackUrl))
     ),
     isWelshTranslationAvailable = appConfig.languageTranslationEnabled,
     backLink = if (showBackLink) Some(BackLink.mimicsBrowserBackButtonViaJavaScript) else None

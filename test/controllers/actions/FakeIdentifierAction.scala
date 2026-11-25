@@ -39,8 +39,10 @@ object FakeIdentifierAction {
 
   val agent: AgentDetails = AgentDetails(
     agentCode       = "AGENTCODE1",
+    agentId         = Some("12345678"),
     credentialId    = "cred-id",
     email           = Some("agent@example.com"),
+    isAssistant     = false,
     agentReferences = Map(AgentService.SA -> "SA0001")
   )
 }
